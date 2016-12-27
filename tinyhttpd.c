@@ -107,27 +107,28 @@ void accept_request(int client)//接受请求，参数
 //---------------------------------------------------
  sprintf(path, "htdocs%s", url);//将url前面加上htdocs然后输出到path
  if (path[strlen(path) - 1] == '/')//如果path的最后一个字符为'/'
-  strcat(path, "index.html");//那么就把peth后面加上index.html
- if (stat(path, &st) == -1) {
-  while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
-   numchars = get_line(client, buf, sizeof(buf));
-  not_found(client);
+  strcat(path, "index.html");//那么就把path后面加上index.html
+//stat函数取得peth指向的文件文件状态，复制到st指向的结构体，返回值：执行成功则返回0，失败返回-1，错误代码存于errno。
+
+ if (stat(path, &st) == -1)//获取文件信息失败的话
+{
+  while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers 读取并丢弃头部 */
+   numchars = get_line(client, buf, sizeof(buf));//从客户端读取一行字符到buf，numchars为读取到的字符数，不含\0
+  not_found(client);//找不到的操作
  }
- else
+ else//读取成功
  {
-  if ((st.st_mode & S_IFMT) == S_IFDIR)
-   strcat(path, "/index.html");
-  if ((st.st_mode & S_IXUSR) ||
-      (st.st_mode & S_IXGRP) ||
-      (st.st_mode & S_IXOTH)    )
-   cgi = 1;
-  if (!cgi)
+  if ((st.st_mode & S_IFMT) == S_IFDIR) //mode_t st_mode; //protection 文件的类型和存取的权限, S_IFMT 0170000 文件类型的位遮罩
+   strcat(path, "/index.html");//还是再加上一个index.html
+  if ((st.st_mode & S_IXUSR) ||(st.st_mode & S_IXGRP) ||(st.st_mode & S_IXOTH))//如果这一串不知道是什么东西成立
+     cgi = 1;//那它是一个cgi
+  if (!cgi)//如果不是一个cgi
    serve_file(client, path);
-  else
-   execute_cgi(client, path, method, query_string);
+  else//如果是cgi
+   execute_cgi(client, path, method, query_string);//执行cgi
  }
 
- close(client);
+ close(client);//关闭客户端
 }
 
 /**********************************************************************/
@@ -192,9 +193,9 @@ void cannot_execute(int client)
  * on value of errno, which indicates system call errors) and exit the
  * program indicating an error. */
 /**********************************************************************/
-void error_die(const char *sc)
+void error_die(const char *sc)//意外终止，接受一个字符串，表示出错的原因
 {
- perror(sc);
+ perror(sc);//perror(s) 用来将上一个函数发生错误的原因输出到标准设备(stderr)。
  exit(1);
 }
 
@@ -204,8 +205,7 @@ void error_die(const char *sc)
  * Parameters: client socket descriptor
  *             path to the CGI script */
 /**********************************************************************/
-void execute_cgi(int client, const char *path,
-                 const char *method, const char *query_string)
+void execute_cgi(int client, const char *path,const char *method, const char *query_string)//执行cgi
 {
  char buf[1024];
  int cgi_output[2];
@@ -360,7 +360,7 @@ void headers(int client, const char *filename)
 /**********************************************************************/
 /* Give a client a 404 not found status message. */
 /**********************************************************************/
-void not_found(int client)
+void not_found(int client)//找不到就输出一系列错误信息
 {
  char buf[1024];
 
@@ -391,7 +391,7 @@ void not_found(int client)
  *              file descriptor
  *             the name of the file to serve */
 /**********************************************************************/
-void serve_file(int client, const char *filename)
+void serve_file(int client, const char *filename)//接受文件名
 {
  FILE *resource = NULL;
  int numchars = 1;
@@ -426,7 +426,21 @@ int startup(u_short *port)
  struct sockaddr_in name;
 
  httpd = socket(PF_INET, SOCK_STREAM, 0);
- if (httpd == -1)
+ /*
+    socket()函数用于根据指定的地址族、数据类型和协议来分配一个套接口的描述字及其所用的资源。如果协议protocol未指定（等于0），则使用缺省的连接方式。
+    int socket( int af, int type, int protocol);
+    
+    af：一个地址描述。目前仅支持AF_INET格式，也就是说ARPA Internet地址格式。
+    
+    type：指定socket类型。新套接口的类型描述类型，如TCP（SOCK_STREAM）和UDP（SOCK_DGRAM）。
+    常用的socket类型有，SOCK_STREAM、SOCK_DGRAM、SOCK_RAW、SOCK_PACKET、SOCK_SEQPACKET等等。
+    
+    protocol：顾名思义，就是指定协议。套接口所用的协议。如调用者不想指定，可用0。
+    常用的协议有，IPPROTO_TCP、IPPROTO_UDP、IPPROTO_STCP、IPPROTO_TIPC等，它们分别对应TCP传输协议、UDP传输协议、STCP传输协议、TIPC传输协议。
+    
+    若无错误发生，socket()返回引用新套接口的描述字。否则的话，返回INVALID_SOCKET错误
+ */
+ if (httpd == -1)//如果分配失败，就执行意外终止，并输出终止原因
   error_die("socket");
  memset(&name, 0, sizeof(name));
  name.sin_family = AF_INET;
@@ -434,16 +448,25 @@ int startup(u_short *port)
  name.sin_addr.s_addr = htonl(INADDR_ANY);
  if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) < 0)
   error_die("bind");
- if (*port == 0)  /* if dynamically allocating a port */
+ if (*port == 0)  /* if dynamically allocating a port 动态分配端口*/
  {
   int namelen = sizeof(name);
-  if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1)
-   error_die("getsockname");
-  *port = ntohs(name.sin_port);
+  if (getsockname(httpd, (struct sockaddr *)&name, &namelen) == -1)//获取失败的话
+    {
+    /*
+    getcock()
+    获取一个套接口的本地名字。
+    s：标识一个已捆绑套接口的描述字。(httpd)
+    name：接收套接口的地址（名字）。
+    namelen：名字缓冲区长度。
+    */
+        error_die("getsockname");
+    }
+  *port = ntohs(name.sin_port);//将一个无符号短整形数从网络字节顺序转换为主机字节顺序。ntohs()返回一个以主机字节顺序表达的数。将值赋给port
  }
- if (listen(httpd, 5) < 0)
-  error_die("listen");
- return(httpd);
+ if (listen(httpd, 5) < 0)//如果监听失败
+    error_die("listen");
+ return(httpd);//上述步骤都成功的话，最终返回分配到的套接口的描述字
 }
 
 /**********************************************************************/
@@ -451,7 +474,7 @@ int startup(u_short *port)
  * implemented.
  * Parameter: the client socket */
 /**********************************************************************/
-void unimplemented(int client)
+void unimplemented(int client)//无法实现的，输出一系列错误信息
 {
  char buf[1024];
 
@@ -477,29 +500,45 @@ void unimplemented(int client)
 
 int main(void)
 {
- int server_sock = -1;
+ int server_sock = -1;//server_sock是一个flag变量，用以指示是否成功调用服务器端口，初始化为-1
  u_short port = 0;
- int client_sock = -1;
- struct sockaddr_in client_name;
- int client_name_len = sizeof(client_name);
- pthread_t newthread;
+ int client_sock = -1;//client_sock是一个flag变量，用以指示是否成功调用客户端端口初始化为-1
+ struct sockaddr_in client_name;//这个神奇的结构体是个啥我也看不懂
+ int client_name_len = sizeof(client_name);//客户端名字的大小
+ pthread_t newthread;//用于声明线程ID。
 
- server_sock = startup(&port);
+ server_sock = startup(&port);//打开端口，应该会修改port的值，所以才要传入地址，sever_sock现在是分配到的套接口的描述字
  printf("httpd running on port %d\n", port);
 
  while (1)
  {
-  client_sock = accept(server_sock,
-                       (struct sockaddr *)&client_name,
-                       &client_name_len);
-  if (client_sock == -1)
-   error_die("accept");
+    client_sock = accept(server_sock,(struct sockaddr *)&client_name,&client_name_len);
+    /*
+    int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+    在一个套接口接受一个连接。
+    参数:
+        sockfd：套接字描述符，该套接口在listen()后监听连接。
+        addr：（可选）指针，指向一缓冲区，其中接收为通讯层所知的连接实体的地址。Addr参数的实际格式由套接口创建时所产生的地址族确定。
+        addrlen：（可选）指针，输入参数，配合addr一起使用，指向存有addr地址长度的整型数。
+    如果没有错误产生，则accept()返回一个描述所接受包的SOCKET类型的值。
+    否则的话，返回INVALID_SOCKET错误，应用程序可通过调用WSAGetLastError()来获得特定的错误代码。
+    */
+    if (client_sock == -1)//如果连接出错
+        error_die("accept");
  /* accept_request(client_sock); */
- if (pthread_create(&newthread , NULL, accept_request, client_sock) != 0)
+ if (pthread_create(&newthread , NULL, accept_request, client_sock) != 0)//如果进程创建失败
+ /*
+    pthread_create是类Unix操作系统（Unix、Linux、Mac OS X等）的创建线程的函数。
+    第一个参数为指向线程标识符的指针。
+    第二个参数用来设置线程属性。
+    第三个参数是线程运行函数的起始地址。
+    最后一个参数是运行函数的参数。
+    若线程创建成功，则返回0。若线程创建失败，则返回出错编号，并且*thread中的内容是未定义的。
+ */
    perror("pthread_create");
  }
 
- close(server_sock);
+ close(server_sock);//关闭服务器端口
 
  return(0);
 }
